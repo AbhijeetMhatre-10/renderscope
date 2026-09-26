@@ -1,0 +1,71 @@
+:root {
+  /* Surfaces & Backgrounds */
+  --background: #0a0b0d;
+  --surface: #121418;
+  --surface-elevated: #1a1d24;
+  --surface-hover: #222630;
+
+  /* Borders */
+  --border: #232730;
+  --border-subtle: #191c22;
+  --border-focus: #3b82f6;
+
+  /* Typography */
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  /* Status Colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+
+  /* Resource Types */
+  --resource-html: #e44d26;
+  --resource-css: #264de4;
+  --resource-js: #f7df1e;
+  --resource-image: #10b981;
+  --resource-font: #a855f7;
+  --resource-other: #6b7280;
+
+  /* Spacing Scale & Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Theme transition speed */
+  --theme-transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+[data-theme="light"] {
+  /* Surfaces & Backgrounds */
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --surface-elevated: #f1f5f9;
+  --surface-hover: #e2e8f0;
+
+  /* Borders */
+  --border: #e2e8f0;
+  --border-subtle: #edf2f7;
+  --border-focus: #2563eb;
+
+  /* Typography */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  /* Status Colors */
+  --success: #059669;
+  --warning: #d97706;
+  --error: #dc2626;
+  --info: #2563eb;
+
+  /* Resource Types */
+  --resource-html: #ea580c;
+  --resource-css: #2563eb;
+  --resource-js: #d97706;
+  --resource-image: #059669;
+  --resource-font: #9333ea;
+  --resource-other: #64748b;
+}
