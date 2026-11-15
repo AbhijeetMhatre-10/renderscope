@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
@@ -36,7 +36,6 @@ import EmptyState from '../../components/common/EmptyState';
 import SuccessState from '../../components/common/SuccessState';
 import PartialState from '../../components/common/PartialState';
 
-import { addAnalysis } from '../../store/appStore';
 import {
   setActiveAnalyzeTab,
   openDrawer,
@@ -44,8 +43,12 @@ import {
   openModal,
   closeModal,
 } from '../../store/uiStore';
-import { mockResources, mockFindings } from '../../store/mockData';
-import { formatBytes, formatDuration } from '../../lib/utils';
+import { mockFindings } from '../../store/mockData';
+import { formatBytes } from '../../lib/utils';
+import useAnalysis from '../../hooks/useAnalysis';
+import usePerformanceMetrics from '../../hooks/usePerformanceMetrics';
+import { formatUnavailable } from '../../utils/performanceUtils';
+import { validateUrl } from '../../services/analysisService';
 
 export function AnalyzePage() {
   const dispatch = useDispatch();
@@ -53,11 +56,26 @@ export function AnalyzePage() {
   const urlParam = searchParams.get('url') || '';
 
   const [inputUrl, setInputUrl] = useState(urlParam);
-  const [analyzingUrl, setAnalyzingUrl] = useState(urlParam || '');
-  const [isLoading, setIsLoading] = useState(false);
   const [resourceFilter, setResourceFilter] = useState('all');
   const [resourceSearch, setResourceSearch] = useState('');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [inputError, setInputError] = useState('');
+  const [selectedStrategy, setSelectedStrategy] = useState(() => {
+    if (typeof window === 'undefined') return 'desktop';
+    const saved = window.localStorage.getItem('pagespeed-strategy');
+    return saved === 'mobile' ? 'mobile' : 'desktop';
+  });
+  const selectedStrategyRef = useRef(selectedStrategy);
+
+  const {
+    status,
+    stepIndex,
+    analyzingUrl,
+    result,
+    error: analysisError,
+    isLoading,
+    startAnalysis,
+  } = useAnalysis(dispatch);
 
   // Redux UI State
   const activeTab = useSelector((state) => state.ui.activeAnalyzeTab);
@@ -66,51 +84,40 @@ export function AnalyzePage() {
   const activeResourceDetails = useSelector((state) => state.ui.activeResourceDetails);
   const activeFindingDetails = useSelector((state) => state.ui.activeFindingDetails);
 
-  const triggerAnalysis = (targetUrl) => {
-    setIsLoading(true);
-    setAnalyzingUrl(targetUrl);
-
-    // Mock 1.2s loading state as specified in requirements
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-      // Dispatch to history store
-      dispatch(
-        addAnalysis({
-          url: targetUrl,
-          lcp: 1.42,
-          fid: 12,
-          cls: 0.02,
-          ttfb: 210,
-          requests: mockResources.length,
-          transferSize: mockResources.reduce((acc, r) => acc + r.transferred, 0),
-        })
-      );
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  };
+  useEffect(() => {
+    selectedStrategyRef.current = selectedStrategy;
+  }, [selectedStrategy]);
 
   // Initial trigger from URL param
   useEffect(() => {
     if (urlParam) {
-      return triggerAnalysis(urlParam);
+      startAnalysis(urlParam, selectedStrategyRef.current);
     }
-  }, [urlParam]);
+  }, [urlParam, startAnalysis]);
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    if (!inputUrl.trim()) return;
-
-    let formatted = inputUrl.trim();
-    if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
-      formatted = `https://${formatted}`;
+    const validation = validateUrl(
+      inputUrl.trim().match(/^https?:\/\//) ? inputUrl.trim() : `https://${inputUrl.trim()}`
+    );
+    if (!validation.valid) {
+      setInputError(validation.message);
+      return;
     }
 
-    setSearchParams({ url: formatted });
-    triggerAnalysis(formatted);
+    setInputError('');
+    setSearchParams({ url: validation.url });
+    startAnalysis(validation.url, selectedStrategy);
   };
 
-  const filteredResources = mockResources.filter((res) => {
+  const handleStrategyChange = (event) => {
+    const nextStrategy = event.target.value === 'mobile' ? 'mobile' : 'desktop';
+    setSelectedStrategy(nextStrategy);
+    window.localStorage.setItem('pagespeed-strategy', nextStrategy);
+  };
+
+  const resources = result?.resources || [];
+  const filteredResources = resources.filter((res) => {
     const matchesType = resourceFilter === 'all' || res.type === resourceFilter;
     const matchesSearch =
       res.name.toLowerCase().includes(resourceSearch.toLowerCase()) ||
@@ -118,11 +125,37 @@ export function AnalyzePage() {
     return matchesType && matchesSearch;
   });
 
+  const performanceMetrics = usePerformanceMetrics(result?.metrics);
+
+  const formatMetricDuration = (milliseconds) => (
+    milliseconds >= 1000
+      ? `${parseFloat((milliseconds / 1000).toFixed(2))}s`
+      : `${milliseconds}ms`
+  );
+
+  const metricCards = performanceMetrics ? [
+    ['TTFB', formatUnavailable(performanceMetrics.ttfb, formatMetricDuration), 'Time to First Byte'],
+    ['FCP', formatUnavailable(performanceMetrics.fcp, formatMetricDuration), 'First Contentful Paint'],
+    ['LCP', formatUnavailable(performanceMetrics.lcp, formatMetricDuration), 'Largest Contentful Paint'],
+    ['DOMContentLoaded', formatUnavailable(performanceMetrics.domContentLoaded, formatMetricDuration), 'DOMContentLoaded'],
+    ['Load', formatUnavailable(performanceMetrics.load, formatMetricDuration), 'Window load event'],
+    ['Total requests', formatUnavailable(performanceMetrics.totalRequests), 'Network requests'],
+    ['Transferred bytes', formatUnavailable(performanceMetrics.transferredBytes, formatBytes), 'Transferred bytes'],
+    ['Resource count', formatUnavailable(performanceMetrics.resourceCount), 'Resources collected'],
+    ['JS size', formatUnavailable(performanceMetrics.jsSize, formatBytes), 'JavaScript size'],
+    ['CSS size', formatUnavailable(performanceMetrics.cssSize, formatBytes), 'CSS size'],
+    ['Image size', formatUnavailable(performanceMetrics.imageSize, formatBytes), 'Image size'],
+  ] : [];
+
   const handleCopy = (text) => {
     navigator.clipboard?.writeText(text);
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
+
+  const formatResourceValue = (value, formatter = String) => (
+    value === null || value === undefined ? 'Unavailable' : formatter(value)
+  );
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -143,9 +176,23 @@ export function AnalyzePage() {
                 }`}
             />
             <span className="text-text-secondary text-[11px]">
-              {isLoading ? 'ANALYZING' : analyzingUrl ? 'INSPECTED' : 'IDLE'}
+              {isLoading ? status.toUpperCase() : status === 'error' ? 'ERROR' : analyzingUrl ? 'INSPECTED' : 'IDLE'}
             </span>
           </div>
+
+          <label className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-xs text-text-secondary">
+            <span className="font-mono uppercase tracking-wider text-[10px]">Strategy</span>
+            <select
+              value={selectedStrategy}
+              onChange={handleStrategyChange}
+              disabled={isLoading}
+              aria-label="Analysis strategy"
+              className="bg-transparent font-mono text-xs text-text-primary outline-none"
+            >
+              <option value="desktop">Desktop</option>
+              <option value="mobile">Mobile</option>
+            </select>
+          </label>
 
           {/* URL Input */}
           <div className="relative flex-1">
@@ -153,7 +200,11 @@ export function AnalyzePage() {
               type="text"
               placeholder="https://domain.com/path"
               value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
+              onChange={(e) => {
+                setInputUrl(e.target.value);
+                setInputError('');
+              }}
+              error={Boolean(inputError)}
               mono
               size="md"
               prefixIcon={<Globe className="w-4 h-4 text-text-muted" />}
@@ -172,6 +223,9 @@ export function AnalyzePage() {
             Analyze
           </Button>
         </form>
+        {(inputError || analysisError) && (
+          <p className="mt-2 text-xs text-status-error">{inputError || analysisError}</p>
+        )}
       </div>
 
       {/* Main Workspace Body */}
@@ -184,12 +238,12 @@ export function AnalyzePage() {
           onAction={() => {
             setInputUrl('https://linear.app');
             setSearchParams({ url: 'https://linear.app' });
-            triggerAnalysis('https://linear.app');
+            startAnalysis('https://linear.app', selectedStrategy);
           }}
         />
       ) : isLoading ? (
         /* Brief 1.2s Loading State */
-        <LoadingState url={analyzingUrl} message="Analyzing website..." />
+        <LoadingState url={analyzingUrl} stepIndex={stepIndex} />
       ) : (
         /* Populated Workspace Structure */
         <motion.div
@@ -203,12 +257,12 @@ export function AnalyzePage() {
             title="Analysis complete"
             url={analyzingUrl}
             metrics={{
-              lcp: '1.42s',
-              fid: '12ms',
-              cls: '0.02',
-              ttfb: '210ms',
+              lcp: formatUnavailable(performanceMetrics.lcp, formatMetricDuration),
+              ttfb: formatUnavailable(performanceMetrics.ttfb, formatMetricDuration),
+              cls: 'Unavailable',
               score: 94,
             }}
+            strategy={result?.strategy}
           />
 
           {/* Tabs Navigation */}
@@ -219,10 +273,10 @@ export function AnalyzePage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/80 pb-3">
               <TabList>
                 <TabTrigger value="overview">Overview</TabTrigger>
-                <TabTrigger value="waterfall" badge={mockResources.length}>
+                <TabTrigger value="waterfall" badge={resources.length}>
                   Waterfall
                 </TabTrigger>
-                <TabTrigger value="resources" badge={mockResources.length}>
+                <TabTrigger value="resources" badge={resources.length}>
                   Resources
                 </TabTrigger>
                 <TabTrigger value="detective" badge={mockFindings.length}>
@@ -239,91 +293,23 @@ export function AnalyzePage() {
             {/* TAB 1: OVERVIEW */}
             <TabContent value="overview">
               <div className="space-y-6">
-                {/* Metric Cards Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* LCP */}
-                  <Card className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-text-secondary">LCP</span>
-                      <Tooltip content="Largest Contentful Paint: Time until the largest visible content element is rendered.">
-                        <span className="text-text-muted hover:text-text-primary cursor-help">
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-2xl font-mono font-bold text-status-success">
-                        1.42s
+                  {metricCards.map(([label, value, description]) => (
+                    <Card key={label} className="p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono text-text-secondary">{label}</span>
+                        <Tooltip content={description}>
+                          <span className="text-text-muted hover:text-text-primary cursor-help">
+                            <HelpCircle className="w-3.5 h-3.5" />
+                          </span>
+                        </Tooltip>
+                      </div>
+                      <span className="block text-xl font-mono font-bold text-text-primary truncate">
+                        {value}
                       </span>
-                      <Badge variant="fast" size="xs">Good</Badge>
-                    </div>
-                    <p className="text-[11px] text-text-muted font-mono truncate">
-                      Hero image rendered at 1.42s
-                    </p>
-                  </Card>
-
-                  {/* FID */}
-                  <Card className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-text-secondary">FID</span>
-                      <Tooltip content="First Input Delay: Latency before the browser responds to user's first interaction.">
-                        <span className="text-text-muted hover:text-text-primary cursor-help">
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-2xl font-mono font-bold text-status-success">
-                        12ms
-                      </span>
-                      <Badge variant="fast" size="xs">Good</Badge>
-                    </div>
-                    <p className="text-[11px] text-text-muted font-mono truncate">
-                      Main thread idle during click
-                    </p>
-                  </Card>
-
-                  {/* CLS */}
-                  <Card className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-text-secondary">CLS</span>
-                      <Tooltip content="Cumulative Layout Shift: Total unexpected layout reflows during the visual lifecycle.">
-                        <span className="text-text-muted hover:text-text-primary cursor-help">
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-2xl font-mono font-bold text-status-success">
-                        0.02
-                      </span>
-                      <Badge variant="fast" size="xs">Good</Badge>
-                    </div>
-                    <p className="text-[11px] text-text-muted font-mono truncate">
-                      Minimal layout reflow
-                    </p>
-                  </Card>
-
-                  {/* TTFB */}
-                  <Card className="p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-text-secondary">TTFB</span>
-                      <Tooltip content="Time to First Byte: Latency until the first byte of HTML reaches the browser.">
-                        <span className="text-text-muted hover:text-text-primary cursor-help">
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </span>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-2xl font-mono font-bold text-text-primary">
-                        210ms
-                      </span>
-                      <Badge variant="info" size="xs">Normal</Badge>
-                    </div>
-                    <p className="text-[11px] text-text-muted font-mono truncate">
-                      Edge CDN cache HIT
-                    </p>
-                  </Card>
+                      <p className="text-[11px] text-text-muted font-mono truncate">{description}</p>
+                    </Card>
+                  ))}
                 </div>
 
                 {/* Secondary Diagnostics Grid */}
@@ -442,11 +428,16 @@ export function AnalyzePage() {
 
                     {/* Waterfall Rows */}
                     <div className="divide-y divide-border/40 pt-2">
-                      {mockResources.map((res) => {
+                      {resources.map((res) => {
                         // Max scale 1000ms
                         const maxMs = 1000;
-                        const startPct = Math.min((res.startTime / maxMs) * 100, 90);
-                        const widthPct = Math.max(Math.min((res.duration / maxMs) * 100, 100 - startPct), 4);
+                        const startPct = Math.min(((res.startTime || 0) / maxMs) * 100, 90);
+                        const widthPct = res.duration === null
+                          ? 4
+                          : Math.max(Math.min((res.duration / maxMs) * 100, 100 - startPct), 4);
+                        const ttfbWidth = res.ttfb !== null && res.duration
+                          ? Math.min((res.ttfb / res.duration) * 100, 100)
+                          : 0;
 
                         return (
                           <div
@@ -484,22 +475,22 @@ export function AnalyzePage() {
                                 {/* TTFB segment */}
                                 <div
                                   className="h-full bg-status-warning/70"
-                                  style={{ width: `${(res.ttfb / res.duration) * 100}%` }}
-                                  title={`TTFB: ${res.ttfb}ms`}
+                                  style={{ width: `${ttfbWidth}%` }}
+                                  title={`TTFB: ${formatResourceValue(res.ttfb, (value) => `${value}ms`)}`}
                                 />
                                 {/* Download segment */}
                                 <div
                                   className="h-full bg-status-success/80 flex-1"
-                                  title={`Content Download: ${res.download}ms`}
+                                  title={`Content Download: ${formatResourceValue(res.download, (value) => `${value}ms`)}`}
                                 />
                               </div>
                             </div>
 
                             {/* Duration & Size Column */}
                             <div className="w-32 shrink-0 flex items-center justify-end gap-3 text-[11px] text-text-muted pl-4">
-                              <span>{formatBytes(res.transferred)}</span>
+                              <span>{formatResourceValue(res.transferred, formatBytes)}</span>
                               <span className="text-text-primary font-medium w-14 text-right">
-                                {res.duration}ms
+                                {formatResourceValue(res.duration, (value) => `${value}ms`)}
                               </span>
                             </div>
                           </div>
@@ -517,7 +508,7 @@ export function AnalyzePage() {
                 {/* Search & Filter Controls */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
-                    {['all', 'html', 'css', 'js', 'image', 'font'].map((type) => (
+                    {['all', 'html', 'css', 'js', 'image', 'font', 'xhr', 'other'].map((type) => (
                       <button
                         key={type}
                         onClick={() => setResourceFilter(type)}
@@ -583,13 +574,13 @@ export function AnalyzePage() {
                             </span>
                           </td>
                           <td className="p-3 text-right text-text-secondary">
-                            {formatBytes(res.size)}
+                            {formatResourceValue(res.decodedSize, formatBytes)}
                           </td>
                           <td className="p-3 text-right text-text-primary">
-                            {formatBytes(res.transferred)}
+                            {formatResourceValue(res.transferred, formatBytes)}
                           </td>
                           <td className="p-3 text-right font-medium text-text-primary">
-                            {res.duration}ms
+                            {formatResourceValue(res.duration, (value) => `${value}ms`)}
                           </td>
                           <td className="p-3 text-center">
                             <Button
@@ -708,25 +699,25 @@ export function AnalyzePage() {
               <div className="p-3 rounded bg-surface-elevated border border-border">
                 <span className="text-[10px] text-text-muted block">STATUS</span>
                 <span className="text-sm font-bold text-status-success">
-                  {activeResourceDetails.status} OK
+                  {formatResourceValue(activeResourceDetails.status, (value) => `${value} OK`)}
                 </span>
               </div>
               <div className="p-3 rounded bg-surface-elevated border border-border">
                 <span className="text-[10px] text-text-muted block">DURATION</span>
                 <span className="text-sm font-bold text-text-primary">
-                  {activeResourceDetails.duration}ms
+                  {formatResourceValue(activeResourceDetails.duration, (value) => `${value}ms`)}
                 </span>
               </div>
               <div className="p-3 rounded bg-surface-elevated border border-border">
                 <span className="text-[10px] text-text-muted block">TRANSFERRED</span>
                 <span className="text-sm font-bold text-text-primary">
-                  {formatBytes(activeResourceDetails.transferred)}
+                  {formatResourceValue(activeResourceDetails.transferred, formatBytes)}
                 </span>
               </div>
               <div className="p-3 rounded bg-surface-elevated border border-border">
                 <span className="text-[10px] text-text-muted block">PRIORITY</span>
                 <span className="text-sm font-bold text-status-info">
-                  {activeResourceDetails.priority}
+                  {formatResourceValue(activeResourceDetails.priority)}
                 </span>
               </div>
             </div>
@@ -739,22 +730,26 @@ export function AnalyzePage() {
               <div className="space-y-2 pt-1">
                 <div className="flex justify-between text-text-secondary">
                   <span>DNS Lookup:</span>
-                  <span className="text-text-primary">{activeResourceDetails.dns}ms</span>
+                  <span className="text-text-primary">
+                    {formatResourceValue(activeResourceDetails.dns, (value) => `${value}ms`)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>SSL Handshake:</span>
-                  <span className="text-text-primary">{activeResourceDetails.ssl}ms</span>
+                  <span className="text-text-primary">
+                    {formatResourceValue(activeResourceDetails.ssl, (value) => `${value}ms`)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>Time to First Byte (TTFB):</span>
                   <span className="text-status-warning font-semibold">
-                    {activeResourceDetails.ttfb}ms
+                    {formatResourceValue(activeResourceDetails.ttfb, (value) => `${value}ms`)}
                   </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>Content Download:</span>
                   <span className="text-status-success font-semibold">
-                    {activeResourceDetails.download}ms
+                    {formatResourceValue(activeResourceDetails.download, (value) => `${value}ms`)}
                   </span>
                 </div>
               </div>
@@ -769,7 +764,7 @@ export function AnalyzePage() {
                 <div className="flex justify-between">
                   <span className="text-text-secondary">Cache Status:</span>
                   <Badge variant="outline" size="xs">
-                    {activeResourceDetails.cache}
+                    {formatResourceValue(activeResourceDetails.cache)}
                   </Badge>
                 </div>
                 <div className="flex justify-between">

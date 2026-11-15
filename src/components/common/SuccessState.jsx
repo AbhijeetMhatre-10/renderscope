@@ -6,6 +6,7 @@ import Badge from '../ui/Badge';
 export function SuccessState({
   title = 'Analysis complete',
   url = 'https://example.com',
+  strategy = null,
   metrics = {
     lcp: '1.42s',
     fid: '12ms',
@@ -32,6 +33,11 @@ export function SuccessState({
               {title}
             </span>
             <Badge variant="fast" size="xs">Score {metrics.score}/100</Badge>
+            {strategy && (
+              <Badge variant="info" size="xs">
+                {strategy === 'desktop' ? 'Desktop Analysis' : 'Mobile Analysis'}
+              </Badge>
+            )}
           </div>
           <p className="text-[11px] font-mono text-text-secondary truncate">
             {url}

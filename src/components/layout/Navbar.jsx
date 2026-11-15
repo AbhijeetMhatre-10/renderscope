@@ -1,11 +1,11 @@
-import React from 'react';
-import { NavLink, useLocation, Link } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sun, Moon, Menu, X, BarChart3, Clock, GitCompare } from 'lucide-react';
-import { toggleTheme } from '../../store/appStore';
-import { toggleMobileMenu, setMobileMenuOpen } from '../../store/uiStore';
-import Button from '../ui/Button';
+import React from "react";
+import { NavLink, useLocation, Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { motion, AnimatePresence } from "framer-motion";
+import { Sun, Moon, Menu, X, BarChart3, Clock, GitCompare } from "lucide-react";
+import { toggleTheme } from "../../store/appStore";
+import { toggleMobileMenu, setMobileMenuOpen } from "../../store/uiStore";
+import Button from "../ui/Button";
 
 export function Navbar() {
   const dispatch = useDispatch();
@@ -14,14 +14,26 @@ export function Navbar() {
   const mobileMenuOpen = useSelector((state) => state.ui.mobileMenuOpen);
 
   const navLinks = [
-    { name: 'Analyze', path: '/analyze', icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { name: 'History', path: '/history', icon: <Clock className="w-3.5 h-3.5" /> },
-    { name: 'Compare', path: '/compare', icon: <GitCompare className="w-3.5 h-3.5" /> },
+    {
+      name: "Analyze",
+      path: "/analyze",
+      icon: <BarChart3 className="w-3.5 h-3.5" />,
+    },
+    {
+      name: "History",
+      path: "/history",
+      icon: <Clock className="w-3.5 h-3.5" />,
+    },
+    {
+      name: "Compare",
+      path: "/compare",
+      icon: <GitCompare className="w-3.5 h-3.5" />,
+    },
   ];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/90 backdrop-blur-md transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link
           to="/"
@@ -42,9 +54,10 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1">
           {navLinks.map((link) => {
             const isActive = location.pathname.startsWith(link.path);
+
             return (
               <NavLink
                 key={link.path}
@@ -52,8 +65,8 @@ export function Navbar() {
                 className={({ isActive: active }) =>
                   `relative px-3 py-1.5 text-xs font-mono tracking-wider uppercase transition-colors rounded-sm flex items-center gap-1.5 select-none ${
                     active || isActive
-                      ? 'text-text-primary font-medium'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover/50'
+                      ? "text-text-primary font-medium"
+                      : "text-text-secondary hover:text-text-primary hover:bg-surface-hover/50"
                   }`
                 }
               >
@@ -63,9 +76,14 @@ export function Navbar() {
                       <motion.div
                         layoutId="nav-active-pill"
                         className="absolute inset-0 bg-surface-elevated border border-border rounded-sm -z-0"
-                        transition={{ type: 'spring', bounce: 0.15, duration: 0.25 }}
+                        transition={{
+                          type: "spring",
+                          bounce: 0.15,
+                          duration: 0.25,
+                        }}
                       />
                     )}
+
                     <span className="relative z-10 flex items-center gap-1.5">
                       {link.icon}
                       {link.name}
@@ -86,7 +104,7 @@ export function Navbar() {
             aria-label="Toggle theme"
             className="h-8 w-8 p-0 text-text-secondary hover:text-text-primary rounded-sm border border-border/60 hover:bg-surface-elevated"
           >
-            {theme === 'dark' ? (
+            {theme === "dark" ? (
               <Sun className="w-4 h-4 text-status-warning" />
             ) : (
               <Moon className="w-4 h-4 text-status-info" />
@@ -102,7 +120,11 @@ export function Navbar() {
               aria-label="Toggle navigation menu"
               className="h-8 w-8 p-0 text-text-secondary hover:text-text-primary rounded-sm border border-border/60 hover:bg-surface-elevated"
             >
-              {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              {mobileMenuOpen ? (
+                <X className="w-4 h-4" />
+              ) : (
+                <Menu className="w-4 h-4" />
+              )}
             </Button>
           </div>
         </div>
@@ -113,7 +135,7 @@ export function Navbar() {
         {mobileMenuOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
+            animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
             className="md:hidden border-b border-border bg-surface/95 backdrop-blur-md px-4 py-3 space-y-1 overflow-hidden"
@@ -127,8 +149,8 @@ export function Navbar() {
                   onClick={() => dispatch(setMobileMenuOpen(false))}
                   className={`flex items-center gap-2.5 px-3 py-2 text-xs font-mono uppercase tracking-wider rounded-sm transition-colors ${
                     isActive
-                      ? 'bg-surface-elevated text-text-primary border border-border font-medium'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+                      ? "bg-surface-elevated text-text-primary border border-border font-medium"
+                      : "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
                   }`}
                 >
                   {link.icon}

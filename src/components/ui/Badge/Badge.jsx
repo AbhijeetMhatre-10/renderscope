@@ -15,6 +15,7 @@ export function Badge({
     js: 'bg-resource-js/15 text-resource-js border-resource-js/30',
     image: 'bg-resource-image/15 text-resource-image border-resource-image/30',
     font: 'bg-resource-font/15 text-resource-font border-resource-font/30',
+    xhr: 'bg-resource-other/15 text-resource-other border-resource-other/30',
     other: 'bg-resource-other/15 text-resource-other border-resource-other/30',
 
     // Performance status

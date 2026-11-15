@@ -1,3 +1,16 @@
+# RenderScope
+
+RenderScope analyzes a public URL with the PageSpeed Insights API. Copy `.env.example` to `.env.local` and set `VITE_PAGESPEED_API_KEY` if you want to use an API key for higher quota.
+
+PageSpeed runs Lighthouse remotely. Simple sites may finish in seconds, while large sites such as GitHub can take around a minute or longer. The app uses the mobile strategy because it is generally faster than desktop; request timeout is configurable with `VITE_PAGESPEED_TIMEOUT_MS`.
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
