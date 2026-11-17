@@ -1,23 +1,100 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
+  Clock,
+  GitCompare,
   Globe,
-  Gauge,
   Layers,
-  History,
-  ShieldCheck,
-  CheckCircle2,
-  Terminal,
-  Activity,
-  Cpu,
+  PlayCircle,
+  SearchCode,
+  Sparkles,
 } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Card, { CardContent } from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import ProductPreview from './components/ProductPreview';
+
+const SAMPLE_TARGETS = [
+  'https://linear.app',
+  'https://github.com',
+  'https://stripe.com',
+  'https://vercel.com',
+];
+
+const FEATURES = [
+  {
+    title: 'Interactive Waterfall',
+    description:
+      'Zoom, scroll, filter, and search every network request with TTFB/download bars, milestone markers, and an inline resource inspector.',
+    icon: Layers,
+    iconColor: 'text-resource-js',
+    badge: 'Timeline',
+  },
+  {
+    title: 'Loading Replay',
+    description:
+      'Watch measured resources load in real relative time with play, pause, restart, 0.5x–5x speed controls, and milestone scrubbing.',
+    icon: PlayCircle,
+    iconColor: 'text-status-success',
+    badge: 'Replay',
+  },
+  {
+    title: 'Performance Detective',
+    description:
+      'Automatically flags large JS bundles, heavy images, slow requests, and high request counts using tunable heuristic thresholds.',
+    icon: SearchCode,
+    iconColor: 'text-status-warning',
+    badge: 'Heuristics',
+  },
+  {
+    title: 'AI Insights',
+    description:
+      'Turns real metrics, waterfalls, and findings into prioritized action plans, plus on-demand explanations for any finding or resource.',
+    icon: Sparkles,
+    iconColor: 'text-status-info',
+    badge: 'Gemini AI',
+  },
+  {
+    title: 'Local History',
+    description:
+      'Saves every completed analysis locally in IndexedDB with its full waterfall so you can reopen snapshots instantly without re-fetching.',
+    icon: Clock,
+    iconColor: 'text-resource-font',
+    badge: 'Snapshots',
+  },
+  {
+    title: 'Before vs After Compare',
+    description:
+      'Compare any two saved runs across TTFB, FCP, LCP, JS weight, requests, and synchronized side-by-side waterfalls.',
+    icon: GitCompare,
+    iconColor: 'text-resource-image',
+    badge: 'Diff',
+  },
+];
+
+const STEPS = [
+  {
+    num: '01',
+    title: 'Enter any URL',
+    description:
+      'Paste a public URL and pick Desktop or Mobile. RenderScope fetches live performance data via PageSpeed Insights.',
+  },
+  {
+    num: '02',
+    title: 'Inspect & Replay',
+    description:
+      'Review Core Web Vitals, zoom through the interactive waterfall, replay the load sequence, and spot heuristic bottlenecks.',
+  },
+  {
+    num: '03',
+    title: 'Explain & Compare',
+    description:
+      'Use AI to explain bottlenecks or individual assets, then compare locally saved runs to verify Before vs After gains.',
+  },
+];
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -26,7 +103,6 @@ export function HomePage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-
     const cleanUrl = urlInput.trim();
 
     if (!cleanUrl) {
@@ -34,115 +110,47 @@ export function HomePage() {
       return;
     }
 
-    let formattedUrl = cleanUrl;
-
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
-      formattedUrl = `https://${cleanUrl}`;
-    }
+    const formattedUrl =
+      cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')
+        ? cleanUrl
+        : `https://${cleanUrl}`;
 
     navigate(`/analyze?url=${encodeURIComponent(formattedUrl)}`);
   };
 
-  const sampleTargets = [
-    'https://linear.app',
-    'https://github.com',
-    'https://stripe.com',
-    'https://vercel.com',
-  ];
-
-  const features = [
-    /**
-     * title: String,
-     * description: String,
-     * icon: ReactIcon,
-     * badge: String,
-     */
-    {
-      title: 'Core Web Vitals Engine',
-      description:
-        'Quantify Largest Contentful Paint (LCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS) under calibrated network conditions.',
-      icon: <Gauge className="w-5 h-5 text-status-info" />,
-      badge: 'Metrics',
-    },
-    {
-      title: 'Sub-Millisecond Waterfall',
-      description:
-        'Deconstruct request lifecycles from DNS resolution and TLS negotiation through Time to First Byte (TTFB) and content streaming.',
-      icon: <Layers className="w-5 h-5 text-resource-js" />,
-      badge: 'Timeline',
-    },
-    {
-      title: 'Sequence Replay',
-      description:
-        'Inspect the DOM rendering sequence step-by-step. Identify exact moments of critical CSS blockages and hero asset reveals.',
-      icon: <History className="w-5 h-5 text-resource-image" />,
-      badge: 'Diagnostics',
-    },
-    {
-      title: 'Automated Detective',
-      description:
-        'Heuristic audits scan for uncompressed assets, synchronous scripts, missing CDN cache headers, and late-discovered fonts.',
-      icon: <ShieldCheck className="w-5 h-5 text-status-warning" />,
-      badge: 'Audit',
-    },
-  ];
-
-  const steps = [
-    /**
-     * num: String,
-     * title: String,
-     * description: String,
-     */
-    {
-      num: '01',
-      title: 'Target Specification',
-      description: 'Enter any public URL or staging host. RenderScope initializes a headless chromium instance with clean cache.',
-    },
-    {
-      num: '02',
-      title: 'Instrumentation Probe',
-      description: 'The engine records PerformanceObserver entries, Resource Timing APIs, and layout shift attribution coordinates.',
-    },
-    {
-      num: '03',
-      title: 'Timeline & Bottleneck Analysis',
-      description: 'Explore the horizontal waterfall, drill into resource headers, and inspect automated remediation advisories.',
-    },
-  ];
-
   return (
-    <div className="flex-1 flex flex-col w-full bg-tech-grid pb-20">
+    <div className="flex-1 flex flex-col w-full bg-tech-grid">
       {/* Hero Section */}
-      <section className="relative pt-12 sm:pt-20 pb-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full text-center space-y-8">
-        {/* Release Tag */}
+      <section className="relative pt-12 sm:pt-18 pb-14 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full text-center space-y-7">
+        {/* Concise Product Tag */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface border border-border text-[11px] font-mono text-text-secondary select-none"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-status-info" />
-          <span>PHASE 1 ARCHITECTURE READY</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-status-success" />
+          <span>Web Performance Inspector</span>
           <span className="text-border">·</span>
-          <span className="text-status-info font-medium">v0.1.0-alpha</span>
+          <span className="text-status-info">Waterfall · Replay · AI</span>
         </motion.div>
 
         {/* Headline & Subhead */}
-        <div className="space-y-4 max-w-3xl mx-auto">
+        <div className="space-y-3 max-w-2xl mx-auto">
           <motion.h1
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.22 }}
             className="text-3xl sm:text-5xl font-semibold tracking-tight text-text-primary font-sans leading-tight"
           >
-            Understand how websites load.
+            See exactly how any website loads.
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, delay: 0.05 }}
-            className="text-sm sm:text-base text-text-secondary max-w-2xl mx-auto leading-relaxed"
+            transition={{ duration: 0.22, delay: 0.05 }}
+            className="text-sm sm:text-base text-text-secondary leading-relaxed"
           >
-            Analyze the performance of any website through an interactive visual timeline.
+            Analyze real page metrics, replay the network waterfall, catch bottlenecks, and compare runs side by side.
           </motion.p>
         </div>
 
@@ -150,7 +158,7 @@ export function HomePage() {
         <motion.form
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, delay: 0.1 }}
+          transition={{ duration: 0.24, delay: 0.08 }}
           onSubmit={handleSubmit}
           className="max-w-2xl mx-auto w-full"
         >
@@ -178,14 +186,14 @@ export function HomePage() {
               className="h-10 sm:h-11 px-6 font-mono text-xs uppercase tracking-wider shrink-0"
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Run
+              Analyze
             </Button>
           </div>
 
           {/* Quick preset chips */}
           <div className="flex flex-wrap items-center justify-center gap-2 mt-3 text-xs font-mono text-text-muted">
-            <span className="text-[11px]">Quick runs:</span>
-            {sampleTargets.map((target) => (
+            <span className="text-[11px]">Try:</span>
+            {SAMPLE_TARGETS.map((target) => (
               <button
                 key={target}
                 type="button"
@@ -193,7 +201,7 @@ export function HomePage() {
                   setUrlInput(target);
                   navigate(`/analyze?url=${encodeURIComponent(target)}`);
                 }}
-                className="text-[11px] text-text-secondary hover:text-text-primary hover:underline bg-surface px-2 py-0.5 rounded border border-border/80 transition-colors"
+                className="text-[11px] text-text-secondary hover:text-text-primary bg-surface px-2 py-0.5 rounded border border-border hover:border-border-focus transition-colors"
               >
                 {target.replace('https://', '')}
               </button>
@@ -201,74 +209,81 @@ export function HomePage() {
           </div>
         </motion.form>
 
-        {/* Code-rendered Product Preview */}
+        {/* Interactive Waterfall Preview */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.15 }}
-          className="pt-6"
+          transition={{ duration: 0.3, delay: 0.12 }}
+          className="pt-4"
         >
           <ProductPreview />
         </motion.div>
       </section>
 
       {/* Feature Grid */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full border-t border-border/80 space-y-10">
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 w-full border-t border-border space-y-8">
         <div className="space-y-1">
-          <span className="text-xs font-mono uppercase text-status-info tracking-wider">Features</span>
+          <span className="text-xs font-mono uppercase text-status-info tracking-wider">
+            Capabilities
+          </span>
           <h2 className="text-xl sm:text-2xl font-semibold text-text-primary">
-            Built for precision performance engineering
+            Everything in one workflow
           </h2>
           <p className="text-xs sm:text-sm text-text-secondary max-w-xl">
-            Everything needed to identify, isolate, and eliminate network latency and main thread bottlenecks.
+            From raw network timings to automated bottleneck detection, AI explanations, and local Before vs After diffs.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {features.map((feature, idx) => (
-            <Card key={idx} className="bg-surface/80 border-border hover:border-border-focus/60 transition-all">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-md bg-surface-elevated border border-border">
-                    {feature.icon}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FEATURES.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <Card
+                key={feature.title}
+                className="bg-surface border-border hover:border-border-focus transition-colors"
+              >
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 rounded-md bg-surface-elevated border border-border">
+                      <Icon className={`w-4 h-4 ${feature.iconColor}`} />
+                    </div>
+                    <Badge variant="default" size="xs">
+                      {feature.badge}
+                    </Badge>
                   </div>
-                  <Badge variant="default" size="xs">
-                    {feature.badge}
-                  </Badge>
-                </div>
-                <h3 className="text-sm font-semibold text-text-primary">
-                  {feature.title}
-                </h3>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  {feature.description}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
+                  <h3 className="text-sm font-semibold text-text-primary">
+                    {feature.title}
+                  </h3>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    {feature.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </section>
 
       {/* How It Works */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 w-full border-t border-border/80 space-y-10">
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 w-full border-t border-border space-y-8">
         <div className="space-y-1">
-          <span className="text-xs font-mono uppercase text-status-info tracking-wider">Technical Workflow</span>
+          <span className="text-xs font-mono uppercase text-status-info tracking-wider">
+            How It Works
+          </span>
           <h2 className="text-xl sm:text-2xl font-semibold text-text-primary">
-            How RenderScope analyzes loading sequence
+            Three steps from URL to actionable fixes
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {steps.map((step, idx) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {STEPS.map((step) => (
             <div
-              key={idx}
-              className="p-5 rounded-md border border-border bg-surface/60 space-y-3 relative overflow-hidden"
+              key={step.num}
+              className="p-5 rounded-lg border border-border bg-surface space-y-2.5"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold text-status-info">
-                  STEP {step.num}
-                </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-border" />
-              </div>
+              <span className="text-xs font-mono font-bold text-status-info">
+                STEP {step.num}
+              </span>
               <h3 className="text-sm font-semibold text-text-primary">
                 {step.title}
               </h3>
@@ -280,20 +295,25 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Minimal Developer-Tool Footer */}
-      <footer className="mt-auto border-t border-border bg-surface/40 py-6 px-4 sm:px-6 lg:px-8">
+      {/* Clean Footer */}
+      <footer className="mt-auto border-t border-border bg-surface py-6 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs text-text-muted">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2 h-2 rounded-full bg-status-success" />
-            <span className="text-text-secondary">Probing Engine: v2.4.1</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-text-primary">RenderScope</span>
             <span className="text-border">·</span>
-            <span className="text-status-success font-medium">Operational</span>
+            <span>Powered by PageSpeed Insights & Gemini AI</span>
           </div>
 
           <div className="flex items-center gap-4 text-[11px]">
-            <span>RenderScope</span>
-            <Badge variant="outline" size="xs">v0.1.0-alpha</Badge>
-            <span>Chromium headless 128.0</span>
+            <Link to="/analyze" className="hover:text-text-primary transition-colors">
+              Analyze
+            </Link>
+            <Link to="/history" className="hover:text-text-primary transition-colors">
+              History
+            </Link>
+            <Link to="/compare" className="hover:text-text-primary transition-colors">
+              Compare
+            </Link>
           </div>
         </div>
       </footer>

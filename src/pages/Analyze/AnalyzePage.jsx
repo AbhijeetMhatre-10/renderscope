@@ -1,23 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import {
   Globe,
   Play,
-  Filter,
   Search,
-  ExternalLink,
-  AlertCircle,
-  CheckCircle,
   HelpCircle,
   Clock,
-  HardDrive,
-  Layers,
   Sparkles,
   ChevronRight,
-  ShieldAlert,
-  Sliders,
   Copy,
   Check,
 } from 'lucide-react';
@@ -25,16 +17,21 @@ import {
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Badge from '../../components/ui/Badge';
-import Card, { CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
+import Card from '../../components/ui/Card';
 import Tooltip from '../../components/ui/Tooltip';
 import Tabs, { TabList, TabTrigger, TabContent } from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import Drawer from '../../components/ui/Drawer';
+import { SkeletonCard, SkeletonRow } from '../../components/ui/Skeleton';
+
+const Waterfall = lazy(() => import('../../components/waterfall/Waterfall'));
+const PerformanceDetective = lazy(() => import('../../components/detective/PerformanceDetective'));
+const AIAnalysis = lazy(() => import('../../components/ai/AIAnalysis'));
+const AIInlineInsight = lazy(() => import('../../components/ai/AIInlineInsight'));
 
 import LoadingState from '../../components/common/LoadingState';
 import EmptyState from '../../components/common/EmptyState';
 import SuccessState from '../../components/common/SuccessState';
-import PartialState from '../../components/common/PartialState';
 
 import {
   setActiveAnalyzeTab,
@@ -43,23 +40,27 @@ import {
   openModal,
   closeModal,
 } from '../../store/uiStore';
-import { mockFindings } from '../../store/mockData';
+import { DEFAULT_THRESHOLDS, runFindingEngine } from '../../analysis';
 import { formatBytes, formatDuration } from '../../lib/utils';
 import useAnalysis from '../../hooks/useAnalysis';
 import usePerformanceMetrics from '../../hooks/usePerformanceMetrics';
+import useAIAnalysis from '../../hooks/useAIAnalysis';
 import { formatUnavailable } from '../../utils/performanceUtils';
 import { validateUrl } from '../../services/analysisService';
+import { getAnalysisById } from '../../services/historyService';
 
 export function AnalyzePage() {
   const dispatch = useDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlParam = searchParams.get('url') || '';
+  const runParam = searchParams.get('run') || '';
 
   const [inputUrl, setInputUrl] = useState(urlParam);
   const [resourceFilter, setResourceFilter] = useState('all');
   const [resourceSearch, setResourceSearch] = useState('');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [inputError, setInputError] = useState('');
+  const [detectiveThresholds, setDetectiveThresholds] = useState(DEFAULT_THRESHOLDS);
   const [selectedStrategy, setSelectedStrategy] = useState(() => {
     if (typeof window === 'undefined') return 'desktop';
     try {
@@ -76,9 +77,11 @@ export function AnalyzePage() {
     stepIndex,
     analyzingUrl,
     result,
+    snapshotInfo,
     error: analysisError,
     isLoading,
     startAnalysis,
+    loadSnapshot,
   } = useAnalysis(dispatch);
 
   // Redux UI State
@@ -92,12 +95,43 @@ export function AnalyzePage() {
     selectedStrategyRef.current = selectedStrategy;
   }, [selectedStrategy]);
 
-  // Initial trigger from URL param
+  // Load saved snapshot instantly (?run=<id>) or run live analysis (?url=<url>)
   useEffect(() => {
+    let cancelled = false;
+    if (runParam) {
+      getAnalysisById(runParam).then((saved) => {
+        if (cancelled) return;
+        if (saved) {
+          setInputUrl(saved.url);
+          if (saved.strategy === 'mobile' || saved.strategy === 'desktop') {
+            setSelectedStrategy(saved.strategy);
+          }
+        }
+        loadSnapshot(saved);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (urlParam) {
       startAnalysis(urlParam, selectedStrategyRef.current);
     }
-  }, [urlParam, startAnalysis]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [runParam, urlParam, startAnalysis, loadSnapshot]);
+
+  const handleRerunLive = () => {
+    if (!analyzingUrl) return;
+    setInputError('');
+    if (urlParam === analyzingUrl && !runParam) {
+      startAnalysis(analyzingUrl, selectedStrategy);
+    } else {
+      setSearchParams({ url: analyzingUrl });
+    }
+  };
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -110,8 +144,11 @@ export function AnalyzePage() {
     }
 
     setInputError('');
-    setSearchParams({ url: validation.url });
-    startAnalysis(validation.url, selectedStrategy);
+    if (urlParam === validation.url && !runParam) {
+      startAnalysis(validation.url, selectedStrategy);
+    } else {
+      setSearchParams({ url: validation.url });
+    }
   };
 
   const handleStrategyChange = (event) => {
@@ -124,7 +161,7 @@ export function AnalyzePage() {
     }
   };
 
-  const resources = result?.resources || [];
+  const resources = useMemo(() => result?.resources || [], [result]);
   const filteredResources = resources.filter((res) => {
     const matchesType = resourceFilter === 'all' || res.type === resourceFilter;
     const matchesSearch =
@@ -133,23 +170,68 @@ export function AnalyzePage() {
     return matchesType && matchesSearch;
   });
 
+  const { findings: detectiveFindings, summary: detectiveSummary } = useMemo(
+    () => runFindingEngine(resources, detectiveThresholds),
+    [resources, detectiveThresholds]
+  );
+
   const performanceMetrics = usePerformanceMetrics(result?.metrics);
+
+  const ai = useAIAnalysis({
+    url: analyzingUrl,
+    strategy: result?.strategy || selectedStrategy,
+    metrics: performanceMetrics,
+    resources,
+    findings: detectiveFindings,
+  });
 
   const formatMetricDuration = formatDuration;
 
   const metricCards = performanceMetrics ? [
-    ['TTFB', formatUnavailable(performanceMetrics.ttfb, formatMetricDuration), 'Time to First Byte'],
-    ['FCP', formatUnavailable(performanceMetrics.fcp, formatMetricDuration), 'First Contentful Paint'],
-    ['LCP', formatUnavailable(performanceMetrics.lcp, formatMetricDuration), 'Largest Contentful Paint'],
-    ['DOMContentLoaded', formatUnavailable(performanceMetrics.domContentLoaded, formatMetricDuration), 'DOMContentLoaded'],
-    ['Load', formatUnavailable(performanceMetrics.load, formatMetricDuration), 'Window load event'],
-    ['Total requests', formatUnavailable(performanceMetrics.totalRequests), 'Network requests'],
-    ['Transferred bytes', formatUnavailable(performanceMetrics.transferredBytes, formatBytes), 'Transferred bytes'],
-    ['Resource count', formatUnavailable(performanceMetrics.resourceCount), 'Resources collected'],
-    ['JS size', formatUnavailable(performanceMetrics.jsSize, formatBytes), 'JavaScript size'],
-    ['CSS size', formatUnavailable(performanceMetrics.cssSize, formatBytes), 'CSS size'],
-    ['Image size', formatUnavailable(performanceMetrics.imageSize, formatBytes), 'Image size'],
+    ['TTFB', formatUnavailable(performanceMetrics.ttfb, formatMetricDuration), 'Server response time'],
+    ['FCP', formatUnavailable(performanceMetrics.fcp, formatMetricDuration), 'First visible content'],
+    ['LCP', formatUnavailable(performanceMetrics.lcp, formatMetricDuration), 'Main content paint'],
+    ['DOM Loaded', formatUnavailable(performanceMetrics.domContentLoaded, formatMetricDuration), 'HTML parsed & ready'],
+    ['Window Load', formatUnavailable(performanceMetrics.load, formatMetricDuration), 'All resources finished'],
+    ['Requests', formatUnavailable(performanceMetrics.totalRequests), 'Total network requests'],
+    ['Transfer Size', formatUnavailable(performanceMetrics.transferredBytes, formatBytes), 'Compressed bytes transferred'],
+    ['JS Weight', formatUnavailable(performanceMetrics.jsSize, formatBytes), 'JavaScript payload size'],
   ] : [];
+
+  const assetDistribution = useMemo(() => {
+    const groups = [
+      { key: 'js', label: 'JS', colorClass: 'bg-resource-js', bytes: 0 },
+      { key: 'image', label: 'Images', colorClass: 'bg-resource-image', bytes: 0 },
+      { key: 'css', label: 'CSS', colorClass: 'bg-resource-css', bytes: 0 },
+      { key: 'font', label: 'Fonts', colorClass: 'bg-resource-font', bytes: 0 },
+      { key: 'html', label: 'HTML', colorClass: 'bg-resource-html', bytes: 0 },
+      { key: 'other', label: 'Other', colorClass: 'bg-resource-other', bytes: 0 },
+    ];
+    const byKey = Object.fromEntries(groups.map((g) => [g.key, g]));
+    let totalTransferred = 0;
+    let totalDecoded = 0;
+
+    for (const res of resources) {
+      const transferred = typeof res.transferred === 'number' && res.transferred > 0 ? res.transferred : 0;
+      const decoded = typeof res.decodedSize === 'number' && res.decodedSize > 0 ? res.decodedSize : 0;
+      totalTransferred += transferred;
+      totalDecoded += decoded;
+      const bucket = byKey[res.type] || byKey.other;
+      bucket.bytes += transferred || decoded;
+    }
+
+    const totalBucketBytes = groups.reduce((sum, g) => sum + g.bytes, 0);
+    return {
+      totalTransferred,
+      totalDecoded,
+      items: groups
+        .filter((g) => g.bytes > 0)
+        .map((g) => ({
+          ...g,
+          pct: totalBucketBytes > 0 ? (g.bytes / totalBucketBytes) * 100 : 0,
+        })),
+    };
+  }, [resources]);
 
   const handleCopy = (text) => {
     navigator.clipboard?.writeText(text);
@@ -246,8 +328,8 @@ export function AnalyzePage() {
           }}
         />
       ) : isLoading ? (
-        /* Brief 1.2s Loading State */
-        <LoadingState url={analyzingUrl} stepIndex={stepIndex} />
+        /* Interactive Loading State with Mini-Game & Render Pipeline */
+        <LoadingState url={analyzingUrl} stepIndex={stepIndex} strategy={selectedStrategy} />
       ) : (
         /* Populated Workspace Structure */
         <motion.div
@@ -256,15 +338,45 @@ export function AnalyzePage() {
           transition={{ duration: 0.2 }}
           className="space-y-6"
         >
+          {/* Saved Snapshot Banner */}
+          {snapshotInfo && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-lg border text-xs font-mono"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--info) 38%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--info) 10%, var(--surface))',
+              }}
+            >
+              <div className="flex items-center gap-2 text-text-secondary">
+                <Clock className="w-3.5 h-3.5 text-status-info shrink-0" />
+                <span>
+                  Viewing saved snapshot
+                  {snapshotInfo.label ? ` (${snapshotInfo.label})` : ''} · Captured{' '}
+                  <strong className="text-text-primary">{snapshotInfo.analyzedAt}</strong>
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleRerunLive}
+                leftIcon={<Play className="w-3 h-3 fill-current" />}
+                className="font-mono text-xs"
+              >
+                Re-run Live
+              </Button>
+            </div>
+          )}
+
           {/* Success Banner */}
           <SuccessState
-            title="Analysis complete"
+            title={snapshotInfo ? 'Saved snapshot loaded' : 'Analysis complete'}
             url={analyzingUrl}
             metrics={{
               lcp: formatUnavailable(performanceMetrics.lcp, formatMetricDuration),
+              fcp: formatUnavailable(performanceMetrics.fcp, formatMetricDuration),
               ttfb: formatUnavailable(performanceMetrics.ttfb, formatMetricDuration),
-              cls: 'Unavailable',
-              score: 94,
+              requests: performanceMetrics.totalRequests ?? resources.length,
             }}
             strategy={result?.strategy}
           />
@@ -274,7 +386,7 @@ export function AnalyzePage() {
             value={activeTab}
             onValueChange={(val) => dispatch(setActiveAnalyzeTab(val))}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/80 pb-3">
+            <div className="border-b border-border pb-3">
               <TabList>
                 <TabTrigger value="overview">Overview</TabTrigger>
                 <TabTrigger value="waterfall" badge={resources.length}>
@@ -283,15 +395,16 @@ export function AnalyzePage() {
                 <TabTrigger value="resources" badge={resources.length}>
                   Resources
                 </TabTrigger>
-                <TabTrigger value="detective" badge={mockFindings.length}>
+                <TabTrigger value="detective" badge={detectiveSummary.total}>
                   Detective
                 </TabTrigger>
+                <TabTrigger
+                  value="ai"
+                  icon={<Sparkles className="w-3.5 h-3.5 text-status-info" />}
+                >
+                  AI Insights
+                </TabTrigger>
               </TabList>
-
-              <div className="flex items-center gap-2 text-xs font-mono text-text-muted">
-                <span>View:</span>
-                <span className="text-text-primary capitalize">{activeTab}</span>
-              </div>
             </div>
 
             {/* TAB 1: OVERVIEW */}
@@ -318,49 +431,49 @@ export function AnalyzePage() {
 
                 {/* Secondary Diagnostics Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Transfer Breakdown */}
+                  {/* Real Asset Weight Distribution */}
                   <Card className="md:col-span-2 p-5 space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs font-mono uppercase tracking-wider text-text-muted">
                         Asset Weight Distribution
                       </span>
-                      <span className="text-xs font-mono text-text-secondary">
-                        Total Transfer: 588 KB (1.02 MB uncompressed)
+                      <span className="text-xs font-mono font-mono-numbers text-text-secondary">
+                        Transferred: {formatBytes(assetDistribution.totalTransferred)}
+                        {assetDistribution.totalDecoded > 0
+                          ? ` (${formatBytes(assetDistribution.totalDecoded)} decoded)`
+                          : ''}
                       </span>
                     </div>
 
-                    {/* Progress Bar of Content Types */}
-                    <div className="h-3 w-full rounded-sm overflow-hidden flex bg-surface-elevated">
-                      <div className="bg-resource-js h-full" style={{ width: '45%' }} title="JS 45%" />
-                      <div className="bg-resource-image h-full" style={{ width: '38%' }} title="Images 38%" />
-                      <div className="bg-resource-css h-full" style={{ width: '10%' }} title="CSS 10%" />
-                      <div className="bg-resource-font h-full" style={{ width: '5%' }} title="Fonts 5%" />
-                      <div className="bg-resource-html h-full" style={{ width: '2%' }} title="HTML 2%" />
-                    </div>
+                    {assetDistribution.items.length > 0 ? (
+                      <>
+                        <div className="h-3 w-full rounded-sm overflow-hidden flex bg-surface-elevated">
+                          {assetDistribution.items.map((item) => (
+                            <div
+                              key={item.key}
+                              className={`${item.colorClass} h-full`}
+                              style={{ width: `${Math.max(1, item.pct)}%` }}
+                              title={`${item.label}: ${formatBytes(item.bytes)} (${Math.round(item.pct)}%)`}
+                            />
+                          ))}
+                        </div>
 
-                    {/* Legend */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-xs font-mono">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-resource-js" />
-                        <span className="text-text-secondary">JS: 428 KB</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-resource-image" />
-                        <span className="text-text-secondary">Img: 384 KB</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-resource-css" />
-                        <span className="text-text-secondary">CSS: 58 KB</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-resource-font" />
-                        <span className="text-text-secondary">Font: 35 KB</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-resource-html" />
-                        <span className="text-text-secondary">HTML: 25 KB</span>
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1 text-xs font-mono font-mono-numbers">
+                          {assetDistribution.items.map((item) => (
+                            <div key={item.key} className="flex items-center gap-1.5 min-w-0">
+                              <span className={`w-2.5 h-2.5 rounded-sm shrink-0 ${item.colorClass}`} />
+                              <span className="text-text-secondary truncate">
+                                {item.label}: {formatBytes(item.bytes)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-xs font-mono text-text-muted">
+                        No transfer size data reported for these resources.
+                      </p>
+                    )}
                   </Card>
 
                   {/* Quick Detective Summary */}
@@ -370,12 +483,17 @@ export function AnalyzePage() {
                         <span className="text-xs font-mono uppercase tracking-wider text-text-muted">
                           Detective Insights
                         </span>
-                        <Badge variant="warning" size="xs">
-                          {mockFindings.length} Advisories
+                        <Badge
+                          variant={detectiveSummary.critical > 0 ? 'critical' : detectiveSummary.total > 0 ? 'warning' : 'fast'}
+                          size="xs"
+                        >
+                          {detectiveSummary.total} {detectiveSummary.total === 1 ? 'Finding' : 'Findings'}
                         </Badge>
                       </div>
                       <p className="text-xs text-text-secondary leading-relaxed">
-                        Found 2 critical bottlenecks directly postponing Largest Contentful Paint.
+                        {detectiveSummary.total === 0
+                          ? 'No bottlenecks flagged under current heuristic thresholds.'
+                          : `${detectiveSummary.critical} critical, ${detectiveSummary.warning} warning, and ${detectiveSummary.info} info findings detected.`}
                       </p>
                     </div>
 
@@ -390,120 +508,28 @@ export function AnalyzePage() {
                     </Button>
                   </Card>
                 </div>
-
-                {/* Partial state demonstration */}
-                <PartialState />
               </div>
             </TabContent>
 
-            {/* TAB 2: WATERFALL (Responsive with Horizontal Scroll) */}
+            {/* TAB 2: WATERFALL (Lazy-Loaded Interactive Waterfall Visualization) */}
             <TabContent value="waterfall">
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-text-muted">
-                  <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-sm bg-status-info" />
-                      <span>DNS & Connect</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-sm bg-status-warning" />
-                      <span>TTFB Wait</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-sm bg-status-success" />
-                      <span>Download</span>
-                    </span>
+              <Suspense
+                fallback={
+                  <div className="rounded-lg border border-border bg-surface overflow-hidden">
+                    {[0, 1, 2, 3, 4, 5].map((idx) => (
+                      <SkeletonRow key={idx} />
+                    ))}
                   </div>
-                  <span>Click any row to inspect resource in Drawer</span>
-                </div>
-
-                {/* Waterfall Container with explicit horizontal scrolling */}
-                <div className="w-full border border-border rounded-lg bg-surface overflow-x-auto shadow-sm">
-                  <div className="min-w-[760px] p-4 font-mono select-none">
-                    {/* Time Scale Axis */}
-                    <div className="relative h-6 border-b border-border/80 flex text-[10px] text-text-muted">
-                      <span className="absolute left-0">0ms</span>
-                      <span className="absolute left-[20%]">200ms</span>
-                      <span className="absolute left-[40%]">400ms</span>
-                      <span className="absolute left-[60%]">600ms</span>
-                      <span className="absolute left-[80%]">800ms</span>
-                      <span className="absolute right-0">1000ms+</span>
-                    </div>
-
-                    {/* Waterfall Rows */}
-                    <div className="divide-y divide-border/40 pt-2">
-                      {resources.map((res) => {
-                        // Max scale 1000ms
-                        const maxMs = 1000;
-                        const startPct = Math.min(((res.startTime || 0) / maxMs) * 100, 90);
-                        const widthPct = res.duration === null
-                          ? 4
-                          : Math.max(Math.min((res.duration / maxMs) * 100, 100 - startPct), 4);
-                        const ttfbWidth = res.ttfb !== null && res.duration
-                          ? Math.min((res.ttfb / res.duration) * 100, 100)
-                          : 0;
-
-                        return (
-                          <div
-                            key={res.id}
-                            onClick={() => dispatch(openDrawer(res))}
-                            className="group flex items-center py-2 px-1 hover:bg-surface-elevated/70 cursor-pointer transition-colors rounded"
-                          >
-                            {/* Resource Info Column */}
-                            <div className="w-64 shrink-0 flex items-center gap-2 pr-3">
-                              <Badge variant={res.type} size="xs" className="w-14 justify-center">
-                                {res.type}
-                              </Badge>
-                              <span className="text-xs text-text-primary truncate font-medium group-hover:text-status-info">
-                                {res.name}
-                              </span>
-                            </div>
-
-                            {/* Waterfall Bar Graph Column */}
-                            <div className="relative flex-1 h-5 bg-surface-elevated/40 rounded overflow-hidden">
-                              {/* LCP Marker Line */}
-                              <div
-                                className="absolute top-0 bottom-0 w-px bg-status-error/40 z-10 pointer-events-none"
-                                style={{ left: '72%' }}
-                                title="LCP Marker (1.42s)"
-                              />
-
-                              {/* Resource Timing Bar */}
-                              <div
-                                className="absolute h-full rounded-sm flex items-center overflow-hidden"
-                                style={{
-                                  left: `${startPct}%`,
-                                  width: `${widthPct}%`,
-                                }}
-                              >
-                                {/* TTFB segment */}
-                                <div
-                                  className="h-full bg-status-warning/70"
-                                  style={{ width: `${ttfbWidth}%` }}
-                                  title={`TTFB: ${formatResourceValue(res.ttfb, formatDuration)}`}
-                                />
-                                {/* Download segment */}
-                                <div
-                                  className="h-full bg-status-success/80 flex-1"
-                                  title={`Content Download: ${formatResourceValue(res.download, formatDuration)}`}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Duration & Size Column */}
-                            <div className="w-32 shrink-0 flex items-center justify-end gap-3 text-[11px] text-text-muted pl-4">
-                              <span>{formatResourceValue(res.transferred, formatBytes)}</span>
-                              <span className="text-text-primary font-medium w-14 text-right">
-                                {formatResourceValue(res.duration, formatDuration)}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                }
+              >
+                <Waterfall
+                  resources={resources}
+                  metrics={performanceMetrics}
+                  resourceInsights={ai.resourceInsights}
+                  onExplainResource={ai.runResourceExplanation}
+                  onOpenDrawer={(res) => dispatch(openDrawer(res))}
+                />
+              </Suspense>
             </TabContent>
 
             {/* TAB 3: RESOURCES TABLE */}
@@ -607,62 +633,51 @@ export function AnalyzePage() {
               </div>
             </TabContent>
 
-            {/* TAB 4: DETECTIVE FINDINGS */}
+            {/* TAB 4: DETECTIVE FINDINGS (Lazy-Loaded Performance Detective) */}
             <TabContent value="detective">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <h3 className="text-sm font-semibold text-text-primary">
-                      Heuristic Performance Findings
-                    </h3>
-                    <p className="text-xs text-text-secondary">
-                      Automated diagnostics pinpointing latency drivers. Click any finding to inspect remediation code.
-                    </p>
+              <Suspense
+                fallback={
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <SkeletonCard key={idx} />
+                    ))}
                   </div>
-                  <Badge variant="warning" size="sm">
-                    {mockFindings.length} Detected
-                  </Badge>
-                </div>
+                }
+              >
+                <PerformanceDetective
+                  findings={detectiveFindings}
+                  summary={detectiveSummary}
+                  thresholds={detectiveThresholds}
+                  findingInsights={ai.findingInsights}
+                  onExplainFinding={ai.runFindingExplanation}
+                  onThresholdsChange={setDetectiveThresholds}
+                  onResetThresholds={() => setDetectiveThresholds(DEFAULT_THRESHOLDS)}
+                  onViewResource={(res) => dispatch(openDrawer(res))}
+                  onViewResourcesTab={() => dispatch(setActiveAnalyzeTab('resources'))}
+                  onInspectFix={(finding) => dispatch(openModal(finding))}
+                />
+              </Suspense>
+            </TabContent>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {mockFindings.map((finding) => (
-                    <Card
-                      key={finding.id}
-                      hover
-                      onClick={() => dispatch(openModal(finding))}
-                      className="p-5 space-y-3 border-border hover:border-border-focus"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <Badge
-                          variant={finding.severity === 'critical' ? 'critical' : 'warning'}
-                          size="xs"
-                        >
-                          {finding.severity}
-                        </Badge>
-                        <span className="text-xs font-mono font-semibold text-status-error">
-                          {finding.impact}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-semibold text-text-primary group-hover:text-status-info">
-                          {finding.title}
-                        </h4>
-                        <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
-                          {finding.summary}
-                        </p>
-                      </div>
-
-                      <div className="pt-2 flex items-center justify-between text-[11px] font-mono border-t border-border/60">
-                        <span className="text-text-muted">{finding.category}</span>
-                        <span className="text-status-info flex items-center gap-1">
-                          Inspect Fix <ChevronRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
+            {/* TAB 5: AI INSIGHTS (Lazy-Loaded Overall AI Analysis) */}
+            <TabContent value="ai">
+              <Suspense
+                fallback={
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[0, 1].map((idx) => (
+                      <SkeletonCard key={idx} />
+                    ))}
+                  </div>
+                }
+              >
+                <AIAnalysis
+                  url={analyzingUrl}
+                  resourceCount={resources.length}
+                  findingCount={detectiveSummary.total}
+                  state={ai.overall}
+                  onAnalyze={ai.runOverall}
+                />
+              </Suspense>
             </TabContent>
           </Tabs>
         </motion.div>
@@ -698,6 +713,35 @@ export function AnalyzePage() {
       >
         {activeResourceDetails && (
           <div className="space-y-6 font-mono text-xs">
+            {/* Inline AI Resource Explanation Trigger */}
+            <div className="space-y-3 font-sans">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={ai.resourceInsights[activeResourceDetails.id]?.status === 'loading'}
+                onClick={() =>
+                  ai.runResourceExplanation(activeResourceDetails, {
+                    forceRefresh: Boolean(ai.resourceInsights[activeResourceDetails.id]?.data),
+                  })
+                }
+                leftIcon={<Sparkles className="w-3.5 h-3.5 text-status-info" />}
+                className="w-full justify-center font-mono text-xs"
+              >
+                {ai.resourceInsights[activeResourceDetails.id]?.data
+                  ? 'Explain this resource (Refresh)'
+                  : 'Explain this resource'}
+              </Button>
+              {ai.resourceInsights[activeResourceDetails.id] && (
+                <Suspense fallback={null}>
+                  <AIInlineInsight
+                    mode="resource"
+                    state={ai.resourceInsights[activeResourceDetails.id]}
+                  />
+                </Suspense>
+              )}
+            </div>
+
             {/* Quick Metrics Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-3 rounded bg-surface-elevated border border-border">
@@ -805,7 +849,13 @@ export function AnalyzePage() {
         title={
           <div className="flex items-center gap-2">
             <Badge
-              variant={activeFindingDetails?.severity === 'critical' ? 'critical' : 'warning'}
+              variant={
+                activeFindingDetails?.severity === 'critical'
+                  ? 'critical'
+                  : activeFindingDetails?.severity === 'info'
+                    ? 'info'
+                    : 'warning'
+              }
               size="xs"
             >
               {activeFindingDetails?.severity}
@@ -837,9 +887,56 @@ export function AnalyzePage() {
         {activeFindingDetails && (
           <div className="space-y-5">
             {/* Impact Alert */}
-            <div className="p-3 rounded-md bg-status-error/10 border border-status-error/30 text-xs font-mono text-status-error flex items-center justify-between">
-              <span>ESTIMATED PENALTY:</span>
-              <span className="font-bold">{activeFindingDetails.metricImpact}</span>
+            <div
+              className="p-3 rounded-md border text-xs font-mono flex items-center justify-between gap-2"
+              style={{
+                color:
+                  activeFindingDetails.severity === 'critical'
+                    ? 'var(--error)'
+                    : activeFindingDetails.severity === 'info'
+                      ? 'var(--info)'
+                      : 'var(--warning)',
+                borderColor: `color-mix(in srgb, ${
+                  activeFindingDetails.severity === 'critical'
+                    ? 'var(--error)'
+                    : activeFindingDetails.severity === 'info'
+                      ? 'var(--info)'
+                      : 'var(--warning)'
+                } 38%, transparent)`,
+                backgroundColor: `color-mix(in srgb, ${
+                  activeFindingDetails.severity === 'critical'
+                    ? 'var(--error)'
+                    : activeFindingDetails.severity === 'info'
+                      ? 'var(--info)'
+                      : 'var(--warning)'
+                } 12%, transparent)`,
+              }}
+            >
+              <span>HEURISTIC TRIGGER:</span>
+              <span className="font-bold text-right">{activeFindingDetails.metricImpact}</span>
+            </div>
+
+            {/* Inline AI Explanation ("Why is this a problem?") */}
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={ai.findingInsights[activeFindingDetails.id]?.status === 'loading'}
+                onClick={() => ai.runFindingExplanation(activeFindingDetails)}
+                leftIcon={<Sparkles className="w-3.5 h-3.5 text-status-info" />}
+                className="font-mono text-xs"
+              >
+                Why is this a problem?
+              </Button>
+              {ai.findingInsights[activeFindingDetails.id] && (
+                <Suspense fallback={null}>
+                  <AIInlineInsight
+                    mode="finding"
+                    state={ai.findingInsights[activeFindingDetails.id]}
+                  />
+                </Suspense>
+              )}
             </div>
 
             {/* Finding Summary */}

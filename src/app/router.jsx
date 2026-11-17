@@ -10,7 +10,7 @@ const ComparePage = lazy(() => import('../pages/Compare/ComparePage'));
 const NotFoundPage = lazy(() => import('../pages/NotFound/NotFoundPage'));
 
 function RouteFallback() {
-  return <LoadingState url="RenderScope" stepIndex={0} />;
+  return <LoadingState url="RenderScope" stepIndex={0} compact />;
 }
 
 function LazyPage({ children }) {

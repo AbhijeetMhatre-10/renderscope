@@ -48,7 +48,7 @@ export function Navbar() {
               RenderScope
             </span>
             <span className="font-mono text-[10px] text-text-muted px-1 rounded bg-surface border border-border/80 hidden sm:inline-block">
-              v0.1
+              v1.0
             </span>
           </div>
         </Link>
