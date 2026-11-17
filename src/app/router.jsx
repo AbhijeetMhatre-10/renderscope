@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import AppLayout from '../components/layout/AppLayout';
-import HomePage from '../pages/Home/HomePage';
-import AnalyzePage from '../pages/Analyze/AnalyzePage';
-import HistoryPage from '../pages/History/HistoryPage';
-import ComparePage from '../pages/Compare/ComparePage';
-import NotFoundPage from '../pages/NotFound/NotFoundPage';
+import LoadingState from '../components/common/LoadingState';
+
+const HomePage = lazy(() => import('../pages/Home/HomePage'));
+const AnalyzePage = lazy(() => import('../pages/Analyze/AnalyzePage'));
+const HistoryPage = lazy(() => import('../pages/History/HistoryPage'));
+const ComparePage = lazy(() => import('../pages/Compare/ComparePage'));
+const NotFoundPage = lazy(() => import('../pages/NotFound/NotFoundPage'));
+
+function RouteFallback() {
+  return <LoadingState url="RenderScope" stepIndex={0} />;
+}
+
+function LazyPage({ children }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
+}
 
 export const router = createBrowserRouter([
   {
@@ -14,23 +24,23 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <HomePage />,
+        element: <LazyPage><HomePage /></LazyPage>,
       },
       {
         path: 'analyze',
-        element: <AnalyzePage />,
+        element: <LazyPage><AnalyzePage /></LazyPage>,
       },
       {
         path: 'history',
-        element: <HistoryPage />,
+        element: <LazyPage><HistoryPage /></LazyPage>,
       },
       {
         path: 'compare',
-        element: <ComparePage />,
+        element: <LazyPage><ComparePage /></LazyPage>,
       },
       {
         path: '*',
-        element: <NotFoundPage />,
+        element: <LazyPage><NotFoundPage /></LazyPage>,
       },
     ],
   },

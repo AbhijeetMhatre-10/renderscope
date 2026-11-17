@@ -10,8 +10,11 @@ export function useAnalysis(dispatch) {
   const [error, setError] = useState('');
   const progressTimerRef = useRef(null);
   const requestControllerRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   const startAnalysis = useCallback((value, strategy = 'desktop') => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     const validation = validateUrl(value);
     if (!validation.valid) {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -43,6 +46,7 @@ export function useAnalysis(dispatch) {
 
     analyzeUrl(validation.url, { signal: controller.signal, strategy })
       .then((analysis) => {
+        if (requestId !== requestIdRef.current || controller.signal.aborted) return;
         clearInterval(progressTimerRef.current);
         setResult(analysis);
         setStepIndex(analysisSteps.length);
@@ -59,6 +63,7 @@ export function useAnalysis(dispatch) {
         }));
       })
       .catch((error) => {
+        if (requestId !== requestIdRef.current) return;
         clearInterval(progressTimerRef.current);
         if (!controller.signal.aborted) {
           setStatus('error');

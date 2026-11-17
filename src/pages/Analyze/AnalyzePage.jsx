@@ -44,7 +44,7 @@ import {
   closeModal,
 } from '../../store/uiStore';
 import { mockFindings } from '../../store/mockData';
-import { formatBytes } from '../../lib/utils';
+import { formatBytes, formatDuration } from '../../lib/utils';
 import useAnalysis from '../../hooks/useAnalysis';
 import usePerformanceMetrics from '../../hooks/usePerformanceMetrics';
 import { formatUnavailable } from '../../utils/performanceUtils';
@@ -62,8 +62,12 @@ export function AnalyzePage() {
   const [inputError, setInputError] = useState('');
   const [selectedStrategy, setSelectedStrategy] = useState(() => {
     if (typeof window === 'undefined') return 'desktop';
-    const saved = window.localStorage.getItem('pagespeed-strategy');
-    return saved === 'mobile' ? 'mobile' : 'desktop';
+    try {
+      const saved = window.localStorage.getItem('pagespeed-strategy');
+      return saved === 'mobile' ? 'mobile' : 'desktop';
+    } catch {
+      return 'desktop';
+    }
   });
   const selectedStrategyRef = useRef(selectedStrategy);
 
@@ -113,7 +117,11 @@ export function AnalyzePage() {
   const handleStrategyChange = (event) => {
     const nextStrategy = event.target.value === 'mobile' ? 'mobile' : 'desktop';
     setSelectedStrategy(nextStrategy);
-    window.localStorage.setItem('pagespeed-strategy', nextStrategy);
+    try {
+      window.localStorage.setItem('pagespeed-strategy', nextStrategy);
+    } catch {
+      // Preference persistence is optional when storage is unavailable.
+    }
   };
 
   const resources = result?.resources || [];
@@ -127,11 +135,7 @@ export function AnalyzePage() {
 
   const performanceMetrics = usePerformanceMetrics(result?.metrics);
 
-  const formatMetricDuration = (milliseconds) => (
-    milliseconds >= 1000
-      ? `${parseFloat((milliseconds / 1000).toFixed(2))}s`
-      : `${milliseconds}ms`
-  );
+  const formatMetricDuration = formatDuration;
 
   const metricCards = performanceMetrics ? [
     ['TTFB', formatUnavailable(performanceMetrics.ttfb, formatMetricDuration), 'Time to First Byte'],
@@ -476,12 +480,12 @@ export function AnalyzePage() {
                                 <div
                                   className="h-full bg-status-warning/70"
                                   style={{ width: `${ttfbWidth}%` }}
-                                  title={`TTFB: ${formatResourceValue(res.ttfb, (value) => `${value}ms`)}`}
+                                  title={`TTFB: ${formatResourceValue(res.ttfb, formatDuration)}`}
                                 />
                                 {/* Download segment */}
                                 <div
                                   className="h-full bg-status-success/80 flex-1"
-                                  title={`Content Download: ${formatResourceValue(res.download, (value) => `${value}ms`)}`}
+                                  title={`Content Download: ${formatResourceValue(res.download, formatDuration)}`}
                                 />
                               </div>
                             </div>
@@ -490,7 +494,7 @@ export function AnalyzePage() {
                             <div className="w-32 shrink-0 flex items-center justify-end gap-3 text-[11px] text-text-muted pl-4">
                               <span>{formatResourceValue(res.transferred, formatBytes)}</span>
                               <span className="text-text-primary font-medium w-14 text-right">
-                                {formatResourceValue(res.duration, (value) => `${value}ms`)}
+                                {formatResourceValue(res.duration, formatDuration)}
                               </span>
                             </div>
                           </div>
@@ -580,7 +584,7 @@ export function AnalyzePage() {
                             {formatResourceValue(res.transferred, formatBytes)}
                           </td>
                           <td className="p-3 text-right font-medium text-text-primary">
-                            {formatResourceValue(res.duration, (value) => `${value}ms`)}
+                            {formatResourceValue(res.duration, formatDuration)}
                           </td>
                           <td className="p-3 text-center">
                             <Button
@@ -705,7 +709,7 @@ export function AnalyzePage() {
               <div className="p-3 rounded bg-surface-elevated border border-border">
                 <span className="text-[10px] text-text-muted block">DURATION</span>
                 <span className="text-sm font-bold text-text-primary">
-                  {formatResourceValue(activeResourceDetails.duration, (value) => `${value}ms`)}
+                  {formatResourceValue(activeResourceDetails.duration, formatDuration)}
                 </span>
               </div>
               <div className="p-3 rounded bg-surface-elevated border border-border">
@@ -731,25 +735,25 @@ export function AnalyzePage() {
                 <div className="flex justify-between text-text-secondary">
                   <span>DNS Lookup:</span>
                   <span className="text-text-primary">
-                    {formatResourceValue(activeResourceDetails.dns, (value) => `${value}ms`)}
+                    {formatResourceValue(activeResourceDetails.dns, formatDuration)}
                   </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>SSL Handshake:</span>
                   <span className="text-text-primary">
-                    {formatResourceValue(activeResourceDetails.ssl, (value) => `${value}ms`)}
+                    {formatResourceValue(activeResourceDetails.ssl, formatDuration)}
                   </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>Time to First Byte (TTFB):</span>
                   <span className="text-status-warning font-semibold">
-                    {formatResourceValue(activeResourceDetails.ttfb, (value) => `${value}ms`)}
+                    {formatResourceValue(activeResourceDetails.ttfb, formatDuration)}
                   </span>
                 </div>
                 <div className="flex justify-between text-text-secondary">
                   <span>Content Download:</span>
                   <span className="text-status-success font-semibold">
-                    {formatResourceValue(activeResourceDetails.download, (value) => `${value}ms`)}
+                    {formatResourceValue(activeResourceDetails.download, formatDuration)}
                   </span>
                 </div>
               </div>

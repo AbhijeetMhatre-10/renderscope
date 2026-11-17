@@ -258,7 +258,7 @@ export function ComparePage() {
 
                   {/* TTFB */}
                   {(() => {
-                    const delta = computeDelta(analysisA.ttfb, analysisB.ttfb, (v) => `${Math.round(v)}ms`);
+                    const delta = computeDelta(analysisA.ttfb, analysisB.ttfb, (v) => `${parseFloat(v.toFixed(2))}ms`);
                     return (
                       <tr className="hover:bg-surface-elevated/40 transition-colors">
                         <td className="p-4 font-semibold text-text-primary">Time to First Byte (TTFB)</td>

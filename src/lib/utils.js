@@ -26,7 +26,7 @@ export function formatBytes(bytes, decimals = 1) {
 export function formatDuration(ms) {
   if (ms == null) return '--';
   if (ms >= 1000) {
-    return `${(ms / 1000).toFixed(2)}s`;
+    return `${parseFloat((ms / 1000).toFixed(2))}s`;
   }
-  return `${Math.round(ms)}ms`;
+  return `${parseFloat(ms.toFixed(2))}ms`;
 }
